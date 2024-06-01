@@ -39,6 +39,20 @@ def get_prompt_question(customer_information, input_text, target_info):
     '''
     return prompt
 
+def get_prompt_choice(customer_information, choices_describe):
+    prompt = f'''
+    你需要根据<用户信息>在<选项描述>中选择一个契合<用户信息>的选项，并返回选项信息。
+    
+    返回内容是一个字典
+    {"{"}
+        "选项信息":String
+    {"}"}
+    
+    <用户信息>：{customer_information}，
+    <选项描述>：{choices_describe}。
+    '''
+    return prompt
+
 def refresh_extracted_information(chat_history, customer_information, input_text, target_info):
     prompt = get_prompt_extracted(customer_information, input_text, target_info)
     input_msg = chat_history + [{"role": "user", "content": prompt}]
@@ -54,7 +68,13 @@ def get_reply(chat_history, customer_information, input_text, target_info):
     new_question = reply["新的问题"]
     return stop_flag, new_question
 
-def fn_chatbot_input(stop_flag, current_info, input_text, chat_bot_infor, target_info):
+def get_choice(customer_information, choices_describe):
+    prompt_choice = get_prompt_choice(customer_information, choices_describe)
+    json_dict = llm.get_llm_json_answer(prompt_choice)
+    choice = json_dict["选项信息"]
+    return choice
+
+def fn_chatbot_input(stop_flag, current_info, input_text, chat_bot_infor, target_info, choices_describe, make_choice):
     """
     根据用户输入和当前信息，与聊天机器人进行交互，并更新用户信息。
 
@@ -81,11 +101,13 @@ def fn_chatbot_input(stop_flag, current_info, input_text, chat_bot_infor, target
     customer_information = refresh_extracted_information(chat_history, customer_information, input_text, target_info)
 
     stop_flag, new_question = get_reply(chat_history, customer_information, input_text, target_info)
-
+    current_info = customer_information
     if stop_flag == 1:
         chat_bot_infor.append((input_text, "感谢您的回答，本次对话到此结束~"))
+        choice = get_choice(customer_information, choices_describe)
+        current_info += choice
     else:
         chat_bot_infor.append((input_text, new_question))
-    current_info = customer_information
+
 
     return stop_flag, current_info, "", chat_bot_infor
