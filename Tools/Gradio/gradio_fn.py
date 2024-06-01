@@ -2,8 +2,9 @@ from ..LLM.ernie import ErnieClass
 import os
 
 ernie_access_token = os.environ["ERNIE_TOKEN"]
+llm = ErnieClass(access_token=ernie_access_token)
 
-def get_prompt_user_info(customer_information, input_text):
+def get_prompt_extracted(customer_information, input_text):
     prompt = f'''
     你是一个相亲信息记录机器人，你需要对<用户回复>进行分析，从中挖掘用户的信息，以及你对用户的评价（例如情绪、性格特点等），
     将这些信息补充到<用户信息>中，你也可以对<用户信息>中已有的信息进行修正。
@@ -37,6 +38,21 @@ def get_prompt_question(customer_information, input_text):
     '''
     return prompt
 
+def refresh_extracted_information(chat_history, customer_information, input_text):
+    prompt = get_prompt_extracted(customer_information, input_text)
+    input_msg = chat_history + [{"role": "user", "content": prompt}]
+    json_dict = llm.get_llm_json_answer_with_msg(input_msg)
+    new_customer_information = json_dict["整理后的用户信息"]
+    return new_customer_information
+
+def get_reply(chat_history, customer_information, input_text):
+    prompt_question = get_prompt_question(customer_information, input_text)
+    input_msg = chat_history + [{"role": "user", "content": prompt_question}]
+    reply = llm.get_llm_json_answer_with_msg(input_msg)
+    stop_flag = 1 if reply["结束判断"] == 1 else 0
+    new_question = reply["新的问题"]
+    return stop_flag, new_question
+
 def fn_chatbot_input(stop_flag, current_info, input_text, chat_bot_infor):
     """
     根据用户输入和当前信息，与聊天机器人进行交互，并更新用户信息。
@@ -55,38 +71,19 @@ def fn_chatbot_input(stop_flag, current_info, input_text, chat_bot_infor):
         - 更新后的聊天机器人与用户的历史交互记录 (List[Tuple[str, str]])。
 
     """
-    llm = ErnieClass(access_token=ernie_access_token)
 
     customer_information = current_info
     chat_history = []
     for chat_item in chat_bot_infor:
         chat_history.extend([{"role": "user", "content": chat_item[0]}, {"role": "assistant", "content": chat_item[1]}])
 
-    prompt_user_infor = get_prompt_user_info(customer_information, input_text)
-    input_msg = chat_history + [{"role": "user", "content": prompt_user_infor}]
-    result = llm.get_llm_answer_with_msg(input_msg)
-    json_dict = llm.extract_json_from_llm_answer(result)
-    customer_information = json_dict["整理后的用户信息"]
+    customer_information = refresh_extracted_information(chat_history, customer_information, input_text)
 
-
-    # 回复
-    prompt_question = get_prompt_question(customer_information, input_text)
-    input_msg = chat_history + [{"role": "user", "content": prompt_question}]
-    result = llm.get_llm_answer_with_msg(input_msg)
-    question = llm.extract_json_from_llm_answer(result)
-
-    chat_history.extend([
-        {"role": "user", "content": input_text},
-        {"role": "assistant", "content": question["新的问题"]}
-    ])
-    if question["结束判断"] == 1:
-        stop_flag = 1
-    else:
-        stop_flag = 0
+    stop_flag, new_question = get_reply(chat_history, customer_information, input_text)
 
     if stop_flag == 1:
-        chat_bot_infor.append((input_text, "感谢您的回答，本次采访到此结束~"))
+        chat_bot_infor.append((input_text, "感谢您的回答，本次对话到此结束~"))
     else:
-        chat_bot_infor.append((input_text, question["新的问题"]))
+        chat_bot_infor.append((input_text, new_question))
 
     return stop_flag, current_info, "", chat_bot_infor

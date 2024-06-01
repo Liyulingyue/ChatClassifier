@@ -63,3 +63,8 @@ class ErnieClass(object):
         result = self.get_llm_answer(prompt)
         json_dict = self.extract_json_from_llm_answer(result)
         return json_dict
+
+    def get_llm_json_answer_with_msg(self, msg):
+        result = self.get_llm_answer_with_msg(msg)
+        json_dict = self.extract_json_from_llm_answer(result)
+        return json_dict
